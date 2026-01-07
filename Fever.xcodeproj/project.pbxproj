@@ -29,9 +29,22 @@
 		9B653C0B2F0EE17400136C70 /* FeverUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FeverUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9B653C282F0EFB1E00136C70 /* Exceptions for "Fever" folder in "Fever" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9B653BF12F0EE17300136C70 /* Fever */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		9B653BF42F0EE17300136C70 /* Fever */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9B653C282F0EFB1E00136C70 /* Exceptions for "Fever" folder in "Fever" target */,
+			);
 			path = Fever;
 			sourceTree = "<group>";
 		};
@@ -400,6 +413,9 @@
 				DEVELOPMENT_TEAM = MX5STHQWRK;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Fever/Info.plist;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Fever tracks your location to create a heatmap of places you've been";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Fever needs your location to show where you are on the map";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -432,6 +448,9 @@
 				DEVELOPMENT_TEAM = MX5STHQWRK;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Fever/Info.plist;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Fever tracks your location to create a heatmap of places you've been";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Fever needs your location to show where you are on the map";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
