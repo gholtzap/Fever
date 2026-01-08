@@ -17,6 +17,8 @@ struct MapView: View {
     @State private var showHeatmap = true
     @State private var followUser = true
     @State private var currentSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+    @State private var showShareSheet = false
+    @State private var shareImage: UIImage?
 
     var body: some View {
         ZStack {
@@ -62,13 +64,10 @@ struct MapView: View {
             }
             .mapStyle(.standard)
             .mapControls {
-                MapUserLocationButton()
                 MapCompass()
-                MapPitchToggle()
                 MapScaleView()
             }
             .onMapCameraChange { context in
-                // User manually moved the map, stop auto-following
                 followUser = false
             }
 
@@ -100,6 +99,16 @@ struct MapView: View {
 
                     // Right side - Controls
                     VStack(alignment: .trailing, spacing: 12) {
+                        // Share button
+                        Button(action: shareHeatmap) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.title2)
+                                .foregroundStyle(.white)
+                                .frame(width: 50, height: 50)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+
                         // Recenter button
                         Button(action: recenterMap) {
                             Image(systemName: followUser ? "location.fill" : "location")
@@ -162,13 +171,17 @@ struct MapView: View {
         }
         .onChange(of: locationManager.currentLocation) { oldValue, newValue in
             if followUser, let location = newValue {
-                // Only auto-center if following user
                 withAnimation(.easeInOut(duration: 0.5)) {
                     position = .region(MKCoordinateRegion(
                         center: location.coordinate,
                         span: currentSpan
                     ))
                 }
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let image = shareImage {
+                ShareSheet(items: [image])
             }
         }
     }
@@ -216,6 +229,153 @@ struct MapView: View {
                     span: currentSpan
                 ))
             }
+        }
+    }
+
+    private func shareHeatmap() {
+        Task {
+            if let image = await createMapSnapshot() {
+                await MainActor.run {
+                    shareImage = image
+                    showShareSheet = true
+                }
+            }
+        }
+    }
+
+    private func createMapSnapshot() async -> UIImage? {
+        let snapshotRegion = await getSnapshotRegion()
+        guard let region = snapshotRegion else { return nil }
+
+        let options = MKMapSnapshotter.Options()
+        options.region = region
+        options.size = CGSize(width: 1080, height: 1920)
+        options.scale = UIScreen.main.scale
+
+        let snapshotter = MKMapSnapshotter(options: options)
+
+        do {
+            let snapshot = try await snapshotter.start()
+            return drawHeatmapOnSnapshot(snapshot, region: region)
+        } catch {
+            print("Failed to create snapshot: \(error)")
+            return nil
+        }
+    }
+
+    @MainActor
+    private func getMapRegion() -> MKCoordinateRegion? {
+        if let location = locationManager.currentLocation {
+            return MKCoordinateRegion(center: location.coordinate, span: currentSpan)
+        }
+        return nil
+    }
+
+    @MainActor
+    private func getSnapshotRegion() -> MKCoordinateRegion? {
+        guard !visits.isEmpty else {
+            return getMapRegion()
+        }
+
+        var minLat = visits[0].latitude
+        var maxLat = visits[0].latitude
+        var minLon = visits[0].longitude
+        var maxLon = visits[0].longitude
+
+        for visit in visits {
+            minLat = min(minLat, visit.latitude)
+            maxLat = max(maxLat, visit.latitude)
+            minLon = min(minLon, visit.longitude)
+            maxLon = max(maxLon, visit.longitude)
+        }
+
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+
+        let spanLat = (maxLat - minLat) * 1.3
+        let spanLon = (maxLon - minLon) * 1.3
+
+        let span = MKCoordinateSpan(
+            latitudeDelta: max(spanLat, 0.01),
+            longitudeDelta: max(spanLon, 0.01)
+        )
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
+            span: span
+        )
+    }
+
+    private func drawHeatmapOnSnapshot(_ snapshot: MKMapSnapshotter.Snapshot, region: MKCoordinateRegion) -> UIImage {
+        let image = snapshot.image
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+
+        return renderer.image { context in
+            image.draw(at: .zero)
+
+            if showHeatmap {
+                let baseRadiusPoints = min(image.size.width, image.size.height) * 0.04
+
+                for data in heatmapData {
+                    let point = snapshot.point(for: data.coordinate)
+
+                    let radiusInPoints = baseRadiusPoints * (1.0 + CGFloat(data.intensity) * 1.5)
+
+                    let layers = [
+                        (multiplier: 3.0, opacity: 0.03),
+                        (multiplier: 2.5, opacity: 0.05),
+                        (multiplier: 2.0, opacity: 0.08),
+                        (multiplier: 1.7, opacity: 0.10),
+                        (multiplier: 1.4, opacity: 0.12),
+                        (multiplier: 1.2, opacity: 0.15),
+                        (multiplier: 1.0, opacity: 0.18),
+                        (multiplier: 0.8, opacity: 0.22),
+                        (multiplier: 0.6, opacity: 0.28),
+                        (multiplier: 0.4, opacity: 0.35),
+                        (multiplier: 0.2, opacity: 0.42),
+                    ]
+
+                    for layer in layers {
+                        let layerRadius = radiusInPoints * layer.multiplier
+                        let rect = CGRect(
+                            x: point.x - layerRadius,
+                            y: point.y - layerRadius,
+                            width: layerRadius * 2,
+                            height: layerRadius * 2
+                        )
+
+                        let uiColor = UIColor(data.color.opacity(layer.opacity))
+                        uiColor.setFill()
+
+                        let path = UIBezierPath(ovalIn: rect)
+                        path.fill()
+                    }
+                }
+            }
+
+            let overlayRect = CGRect(x: image.size.width - 700, y: image.size.height - 400, width: 640, height: 320)
+            UIColor.systemBackground.withAlphaComponent(0.85).setFill()
+            let roundedRect = UIBezierPath(roundedRect: overlayRect, cornerRadius: 24)
+            roundedRect.fill()
+
+            let titleAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 48, weight: .bold),
+                .foregroundColor: UIColor.label
+            ]
+            let title = "My Exploration Heatmap"
+            let titleRect = CGRect(x: overlayRect.minX + 60, y: overlayRect.minY + 60, width: overlayRect.width - 120, height: 100)
+            title.draw(in: titleRect, withAttributes: titleAttributes)
+
+            let subtitleAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 32),
+                .foregroundColor: UIColor.secondaryLabel
+            ]
+            let subtitle = "\(visits.count) locations visited"
+            let subtitleRect = CGRect(x: overlayRect.minX + 60, y: overlayRect.minY + 160, width: overlayRect.width - 120, height: 60)
+            subtitle.draw(in: subtitleRect, withAttributes: subtitleAttributes)
         }
     }
 
@@ -300,6 +460,17 @@ struct HeatmapPoint {
     let intensity: Double
     let radius: Double
     let color: Color
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
